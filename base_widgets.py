@@ -1,15 +1,21 @@
 import pygame as pg
 import pygame.draw as dr
+import pygame.sprite as spr
 import pygame.transform as tr
 
-from functions import do_nothing, get_width
-from additional_classes import HorAlign
+from functions import do_nothing, get_width, load_image
+from additional_classes import HorAlign, UnSupportableMethodBeforeRun
 
 
-class BaseWidget:
+class BaseWidget(spr.Sprite):
+    EVENT_PROCESSING = 'event'
+    RENDER = 'render'
+
     def __init__(self, parent, rect):
+        super().__init__()
         self.parent = parent
         x, y, w, h = rect
+        self.rect = pg.Rect(*rect)
         self.x, self.y, self.x1, self.y1 = x, y, x + w, y + h
         self.w, self.h = w, h
 
@@ -17,29 +23,151 @@ class BaseWidget:
         pass
 
     def __contains__(self, coords):
-        return coords[0] in range(self.x, self.x1) and\
-               coords[1] in range(self.y, self.y1)
+        return self.rect.collidepoint(coords)
 
     def process_event(self, event, *args, **kwargs):
         # В args и kwargs передаются аргументы, которые нужно передать слоту
         pass
 
-    def set_coords(self, x, y):
-        self.x, self.y = x, y
-        self.x1, self.y1 = self.x + self.w, self.y + self.h
+    def update(self, key, event=None):
+        if key == BaseWidget.EVENT_PROCESSING:
+            self.process_event(event)
+        if key == BaseWidget.RENDER:
+            self.render()
+
+    def set_rect(self, x=None, y=None, w=None, h=None):
+        if x is not None:
+            self.set_x(x)
+        if y is not None:
+            self.set_y(y)
+        if w is not None:
+            self.set_w(w)
+        if h is not None:
+            self.set_h(h)
+
+    def set_x(self, x):
+        self.x = x
+        self.x1 = self.x + self.w
+
+    def set_y(self, y):
+        self.y = y
+        self.y1 = self.y + self.h
 
     def set_h(self, h):
         self.h = h
-        self.x1 = self.x + h
+        self.y1 = self.y + h
 
     def set_w(self, w):
         self.w = w
-        self.y1 = self.y + w
+        self.x1 = self.x + w
 
-    def trans_pos(self, pos):
-        '''Трансформирует абсолютную точку в относительную для дочерних
- элементов'''
-        return (pos[0] - self.x, pos[1] - self.y)
+
+class Window(BaseWidget):
+    def __init__(self, width, height, caption='Window', logo_name=None,
+                 background_color=pg.Color(0, 0, 0), fps=60):
+        super().__init__(None, (0, 0, width, height))
+        self.size = (self.w, self.h)
+        self.fps = fps
+        self.caption = caption
+        self.logo_name = logo_name
+        self.background_color = background_color
+
+        self.cursor_group = spr.Group()
+        self.widgets_group = spr.Group()
+        self.cursor_name = None
+        self.new_window_after_self = None
+
+        self.runned = False
+        self.running = True
+
+    def run(self):
+        self.runned = True
+        pg.init()
+        clock = pg.time.Clock()
+        pg.display.set_caption(self.caption)
+        self.screen = pg.display.set_mode(self.size)
+        if self.logo_name is not None:
+            pg.display.set_icon(load_image(self.logo_name))
+        self.code_before_game_cycle()  # USER CODE
+        if self.cursor_name is not None:
+            pg.mouse.set_visible(False)
+            self.cursor = spr.Sprite(self.cursor_group)
+            self.cursor.image = load_image(self.cursor_name)
+            self.cursor.rect = self.cursor.image.get_rect()
+        while self.running:
+            for event in pg.event.get():
+                self.widgets_group.update(BaseWidget.EVENT_PROCESSING,
+                                          event=event)
+                if event.type == pg.QUIT:
+                    self.running = False
+                    self.exit()
+                self.code_in_event_cycle(event)  # USER CODE
+                if event.type == pg.MOUSEMOTION and\
+                                self.cursor_name is not None:
+                    self.cursor.rect.topleft = event.pos
+            self.code_before_render()  # USER CODE
+            self.screen.fill(self.background_color)
+            self.widgets_group.update(BaseWidget.RENDER)
+            self.code_in_render()
+            if pg.mouse.get_focused() and self.cursor_name is not None:
+                self.cursor_group.draw(self.screen)
+            self.code_after_render()  # USER CODE
+            clock.tick(self.fps)
+            pg.display.flip()
+        self.code_after_game_cycle()  # USER CODE
+        pg.quit()
+        if self.new_window_after_self is not None:
+            self.new_window_after_self.run()
+
+    def exit(self):
+        pass
+
+    def set_caption(self, caption):
+        self.caption = caption
+        if self.runned:
+            pg.display.set_caption(caption)
+
+    def set_window_after_self(self, window):
+        self.new_window_after_self = window
+
+    def set_cursor(self, image_name):
+        self.cursor_name = image_name
+        if self.runned and self.cursor_name is not None:
+            self.cursor = spr.Sprite(self.cursor_group)
+            self.cursor.image = load_image(self.cursor_name)
+            self.cursor.rect = self.cursor.image.get_rect()
+
+    def set_logo(self, image_name):
+        self.logo_name = image_name
+        if self.runned and self.logo_name is not None:
+            pg.display.set_icon(load_image(self.logo_name))
+
+    def set_fps(self, fps):
+        self.fps = fps
+
+    def add_widgets(self, *widgets):
+        self.widgets_group.add(*widgets)
+
+    def remove_widgets(self, *widgets):
+        self.widgets_group.remove(*widgets)
+
+    def code_before_game_cycle(self):
+        pass
+
+    def code_in_event_cycle(self, event):
+        pass
+
+    def code_before_render(self):
+        pass
+
+    def code_in_render(self):
+        pass
+
+    def code_after_render(self):
+        pass
+
+    def code_after_game_cycle(self):
+        pass
 
 
 class Button(BaseWidget):

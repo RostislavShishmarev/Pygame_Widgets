@@ -2,7 +2,7 @@ import pygame as pg
 import pygame.draw as dr
 
 from functions import do_nothing
-from base_widgets import BaseWidget, Button, Label
+from base_widgets import BaseWidget, Button, Label, Image
 from additional_classes import HorAlign, ElementFunctionAtCycle
 
 
@@ -86,9 +86,10 @@ class TabWidget(BaseWidget):
             tab_widgets.append(wid)
         self.widgets[index][0] = tab_widgets
 
-    def add_widget(self, widget, index):
-        widget.parent = self
-        self.widgets[index][0].append(widget)
+    def add_widgets(self, widgets, index):
+        for wid in widgets:
+            wid.parent = self
+            self.widgets[index][0].append(wid)
 
     def trans_pos(self, pos):
         return (pos[0] - self.x,
@@ -179,8 +180,7 @@ class ScrollList(BaseWidget):
         if 0 <= new_index < len(self.elements) - self.n_vizible + 1:
             self.up_index = new_index
 
-    def set_elements(self, elements, but_image=None, but_light_image=None,
-                     but_slot=do_nothing):
+    def set_elements(self, elements, button=None):
         self.elements = []
         h = (self.h - 3 * self.indent - self.title_label.h) //\
             self.n_vizible - self.indent
@@ -188,9 +188,7 @@ class ScrollList(BaseWidget):
             item, info = el
             self.elements.append(ScrollElement(self,
                                                (0, 0, self.w - self.indent * 2,
-                                                h), item, but_image=but_image,
-                                               but_light_image=but_light_image,
-                                               but_slot=but_slot,
+                                                h), item, button=button,
                                                information=info,
                                                select_func=self.select_func))
         self.up_index = None if elements == [] else 0
@@ -211,8 +209,7 @@ class ScrollList(BaseWidget):
 
 class ScrollElement(BaseWidget):
     def __init__(self, parent, rect, text_item, font_size=35,
-                 but_image=None, but_light_image=None, but_slot=do_nothing,
-                 main_color=pg.Color(245, 127, 17),
+                 button=None, main_color=pg.Color(245, 127, 17),
                  back_color=pg.Color(20, 20, 20), information=None,
                  select_func=do_nothing):
         super().__init__(parent, rect)
@@ -220,9 +217,7 @@ class ScrollElement(BaseWidget):
         self.font_size = font_size
         self.information = information
 
-        self.but_image = but_image
-        self.but_light_image = but_light_image
-        self.but_slot = but_slot
+        self.button = button
         self.select_function = select_func
 
         self.main_color = self.current_color = main_color
@@ -236,17 +231,14 @@ class ScrollElement(BaseWidget):
         self.bord_rad = 0
         self.number = 1
         self.selected = False
-        self.button = None
 
         item_w = self.w - self.h - self.indent * 2
-        if self.but_image is not None:
+        if self.button is not None:
             item_w -= self.h + self.indent * 2
-            self.button = Image(self, (self.h + self.indent * 3 + item_w,
-                                       self.indent, self.h - self.indent * 2,
-                                       self.h - self.indent * 2),
-                                self.but_image,
-                                light_image=self.but_light_image,
-                                slot=self.but_slot)
+            self.button.set_coords(self.h + self.indent * 3 + item_w,
+                                   self.indent)
+            self.button.set_w(self.h - self.indent * 2)
+            self.button.set_h(self.h - self.indent * 2)
         self.item_label = Label(self, (self.h + 2 * self.indent, self.indent,
                                        item_w, self.h - self.indent * 2),
                                 self.text, main_color=self.current_color,
@@ -261,7 +253,7 @@ class ScrollElement(BaseWidget):
                                 alignment=HorAlign.CENTER,
                                 font_size=self.font_size)
 
-    def render(self, screen=None, index=0):
+    def render(self, screen=None):
         screen = screen if screen is not None else self.parent.screen
         dr.rect(screen, self.back_color, (self.x, self.y, self.w, self.h),
                 border_radius=self.bord_rad)
