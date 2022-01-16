@@ -4,7 +4,7 @@ import pygame.sprite as spr
 import pygame.transform as tr
 
 from functions import do_nothing, get_width, load_image, get_max_font_size,\
-    get_coords_from_align
+    get_coords_from_align, get_max_text_string
 from additional_classes import Align
 
 
@@ -202,6 +202,7 @@ class Button(BaseWidget):
         self.text = text
         self.font_size = font_size if font_size < self.h - 2 * self.indent\
             else get_max_font_size(self.text, self.w - 2 * self.indent,
+                                   self.h - 2 * self.indent,
                                    font_size)
         self.alignment = alignment
 
@@ -216,11 +217,11 @@ class Button(BaseWidget):
                 (self.x, self.y, self.w, self.h), width=self.border_w)
         font = pg.font.Font(None, self.font_size)
         text = font.render(self.text, True, self.current_color)
-        x, y = get_coords_from_align(self.alignment, self.w, self.h,
+        x, y = get_coords_from_align(self.alignment, self.w - 2 * self.indent,
+                                     self.h - 2 * self.indent,
                                      text.get_width(), text.get_height(),
-                                     x_indent=self.indent,
-                                     y_indent=self.indent, start_x=self.x,
-                                     start_y=self.y)
+                                     start_x=self.x + self.indent,
+                                     start_y=self.y + self.indent)
         screen.blit(text, (x, y))
 
     def process_event(self, event, *args, **kwargs):
@@ -261,15 +262,22 @@ class Button(BaseWidget):
         self.light_delta = delta
         self.set_color(self.main_color)
 
+    def set_indent(self, indent):
+        self.indent = indent
+        self.font_size = self.font_size\
+            if self.font_size < self.h - 2 * self.indent\
+            else get_max_font_size(self.text, self.w - 2 * self.indent,
+                                   self.font_size)
+
+    def set_border(self, border_w):
+        self.border_w = border_w
+
 
 class Image(BaseWidget):
-    def __init__(self, parent, rect, image, proportional=False,
+    def __init__(self, parent, rect, image,
                  bord_color=None, light_image=None,
                  key=None, modifier=None, slot=do_nothing):
         super().__init__(parent, rect)
-        if proportional:
-            self.w = get_width(image, self.h)
-
         self.image = self.current_image = tr.scale(image, (self.w, self.h))
         self.light_image = light_image if light_image is None\
             else tr.scale(light_image, (self.w, self.h))
@@ -278,12 +286,11 @@ class Image(BaseWidget):
         self.modifier = modifier
         self.slot = slot
 
-        self.main_color = bord_color
+        self.main_color = self.current_color = bord_color
         self.light_main_color = pg.Color(min(self.main_color.r + 90, 255),
                                          min(self.main_color.g + 90, 255),
                                          min(self.main_color.b + 90, 255))\
             if self.main_color is not None else None
-        self.current_color = self.main_color
         self.border_w = 2
 
     def render(self, screen=None):
@@ -313,7 +320,11 @@ class Image(BaseWidget):
                 self.current_color = self.main_color
 
     def set_image(self, image):
-        self.image = self.current_image = image
+        self.image = self.current_image = tr.scale(image, (self.w, self.h))
+
+    def set_light_image(self, image):
+        self.light_image = image if image is None\
+            else tr.scale(image, (self.w, self.h))
 
     def set_color(self, color=None):
         self.main_color = self.current_color = color
@@ -329,16 +340,27 @@ class Image(BaseWidget):
 class Label(BaseWidget):
     def __init__(self, parent, rect, text, main_color=pg.Color(247, 180, 10),
                  back_color=pg.Color(0, 0, 0), font_size=20, border=False,
-                 alignment=Align.LEFT, indent=5):
+                 alignment=Align.LEFT & Align.TOP):
         super().__init__(parent, rect)
-        self.text = text
-        self.font_size = font_size
+        self.indent = 5
+        self.text_indent = 4
+        self.border_w = 2
+        self.text_strings = text.split('\n')
+        max_string = get_max_text_string(self.text_strings)
+        text_h = (self.h - 2 * self.indent - (len(self.text_strings) - 1) *
+                 self.text_indent) // len(self.text_strings)
+        self.font_size = get_max_font_size(max_string,
+                                           self.w - 2 * self.indent, text_h,
+                                           font_size)
+        text = pg.font.Font(None, self.font_size).render(max_string, True,
+                                                         pg.Color(0, 0, 0))
+        self.text_h = (len(self.text_strings) - 1) * self.text_indent +\
+                      len(self.text_strings) * text.get_height()
+        self.text_w = text.get_width()
         self.alignment = alignment
-        self.indent = indent
         self.main_color = main_color
         self.back_color = back_color
         self.border = border
-        self.border_w = 2
 
     def render(self, screen=None):
         screen = screen if screen is not None else self.parent.screen
@@ -346,23 +368,111 @@ class Label(BaseWidget):
             dr.rect(screen, self.back_color, (self.x, self.y, self.w, self.h))
             dr.rect(screen, self.main_color, (self.x, self.y, self.w, self.h),
                     width=self.border_w)
+        self.surface = pg.Surface((self.text_w, self.text_h), pg.SRCALPHA, 32)
+        self.surface.fill(pg.Color(0, 0, 0, 1))
         font = pg.font.Font(None, self.font_size)
-        text = font.render(self.text, True, self.main_color)
-        if self.alignment == Align.LEFT:
-            x = self.x + self.indent
-        elif self.alignment == Align.CENTER:
-            x = self.x + self.w // 2 - text.get_width() // 2
-        elif self.alignment == Align.RIGHT:
-            x = self.x + self.w - self.indent
-        else:
-            return
-        screen.blit(text, (x, self.y + self.h // 2 - text.get_height() // 2))
+        x, y = 0, 0
+        for text in self.text_strings:
+            text = font.render(text, True, self.main_color)
+            x1, y1 = get_coords_from_align(self.alignment, self.text_w,
+                                           text.get_height(),
+                                           text.get_width(), text.get_height(),
+                                           start_x=x, start_y=y)
+            self.surface.blit(text, (x1, y1))
+            y += self.text_indent + text.get_height()
+        x, y = get_coords_from_align(self.alignment, self.w - 2 * self.indent,
+                                     self.h - 2 * self.indent,
+                                     self.text_w, self.text_h,
+                                     start_x=self.x + self.indent,
+                                     start_y=self.y + self.indent)
+        pg.Surface.blit(screen, self.surface, (x, y))
 
     def set_text(self, text):
-        self.text = text
+        self.text_strings = text.split('\n')
+        max_string = get_max_text_string(self.text_strings)
+        text_h = (self.h - 2 * self.indent - (len(self.text_strings) - 1) *
+                 self.text_indent) // len(self.text_strings)
+        self.font_size = get_max_font_size(max_string,
+                                           self.w - 2 * self.indent, text_h,
+                                           self.font_size)
+        text = pg.font.Font(None, self.font_size).render(max_string, True,
+                                                         pg.Color(0, 0, 0))
+        self.text_h = (len(self.text_strings) - 1) * self.text_indent +\
+                      len(self.text_strings) * text.get_height()
+        self.text_w = text.get_width()
 
     def set_color(self, color):
         self.main_color = color
 
     def set_font_size(self, font_size):
         self.font_size = font_size
+        self.set_text('\n'.join(self.text_strings))
+
+
+class InputBox(BaseWidget):
+    def __init__(self, parent, rect, text='', font_size=40,
+                 color_active=pg.Color(251, 160, 227),
+                 color_inactive=pg.Color(255, 0, 255),
+                 back_color=pg.Color(0, 0, 0),
+                 cursor_period=30):
+        super().__init__(parent, rect)
+        self.indent = 5
+        self.border_w = 2
+        self.start_cursor_period = self.cursor_period = cursor_period
+        self.delta = -1
+        self.text = text
+        self.start_font_size = font_size
+        self.font_size = get_max_font_size(text, self.w - 2 * self.indent,
+                                           self.h - 2 * self.indent,
+                                           self.start_font_size)
+
+        self.current_color = self.color_inactive = color_inactive
+        self.color_active = color_active
+        self.back_color = back_color
+
+        self.active = False
+        self.draw_cursor = False
+
+
+    def process_event(self, event, *args, **kwargs):
+        if event.type == pg.MOUSEBUTTONDOWN:
+            if event.pos in self and event.button == 1:
+                self.active = True
+            elif event.pos not in self and event.button == 1:
+                self.active = False
+            self.current_color = self.color_active if self.active\
+                else self.color_inactive
+        if event.type == pg.KEYDOWN:
+            if self.active:
+                if event.key == pg.K_BACKSPACE:
+                    self.set_text(self.text[:-1])
+                else:
+                    self.set_text(self.text + event.unicode)
+
+    def render(self, screen=None):
+        screen = screen if screen is not None else self.parent.screen
+        pg.draw.rect(screen, self.back_color, self.rect)
+        pg.draw.rect(screen, self.current_color, self.rect, self.border_w)
+        font = pg.font.Font(None, self.font_size)
+        txt = font.render(self.text, True, self.current_color)
+        screen.blit(txt, (self.x + self.indent, self.y + self.indent))
+        if self.active and self.draw_cursor:
+            dr.line(screen, self.current_color,
+                    (self.x + self.indent + txt.get_width(),
+                     self.y + self.indent),
+                    (self.x + self.indent + txt.get_width(),
+                     self.y + self.h - 2 * self.indent), self.border_w)
+        self.cursor_period += self.delta
+        if self.cursor_period <= 0 or\
+                        self.cursor_period >= self.start_cursor_period:
+            self.draw_cursor = not self.draw_cursor
+            self.delta *= -1
+
+    def get_text(self):
+        return self.text
+
+    def set_text(self, text):
+        self.text = text
+        self.font_size = get_max_font_size(text, self.w - 2 * self.indent,
+                                           self.h - 2 * self.indent,
+                                           self.start_font_size)
