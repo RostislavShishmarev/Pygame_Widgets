@@ -4,7 +4,7 @@ import pygame.sprite as spr
 import pygame.transform as tr
 
 from functions import do_nothing, get_width, load_image, get_max_font_size,\
-    get_coords_from_align, get_max_text_string
+    get_coords_from_align, get_max_text_string, get_light_color
 from additional_classes import Align
 
 
@@ -178,7 +178,7 @@ class Window(BaseWidget):
         pass
 
 
-class Button(BaseWidget):
+class PushButton(BaseWidget):
     def __init__(self, parent, rect, text, font_size=40,
                  main_color=pg.Color(70, 202, 232),
                  back_color=pg.Color(0, 0, 0), slot=do_nothing,
@@ -190,12 +190,8 @@ class Button(BaseWidget):
         self.indent = 5
 
         self.main_color = main_color
-        self.light_main_color = pg.Color(min(self.main_color.r +\
-                                             self.light_delta, 255),
-                                         min(self.main_color.g +\
-                                             self.light_delta, 255),
-                                         min(self.main_color.b +\
-                                             self.light_delta, 255))
+        self.light_main_color = get_light_color(self.main_color,
+                                                self.light_delta)
         self.current_color = self.main_color
         self.back_color = back_color
 
@@ -243,14 +239,8 @@ class Button(BaseWidget):
 
     def set_color(self, color):
         self.main_color = self.current_color = color
-        func = min if self.light_delta >= 0 else max
-        value = 255 if self.light_delta >= 0 else 0
-        self.light_main_color = pg.Color(func(self.main_color.r +\
-                                              self.light_delta, value),
-                                         func(self.main_color.g +\
-                                              self.light_delta, value),
-                                         func(self.main_color.b +\
-                                              self.light_delta, value))
+        self.light_main_color = get_light_color(self.main_color,
+                                                self.light_delta)
 
     def set_slot(self, slot):
         self.slot = slot
@@ -275,9 +265,12 @@ class Button(BaseWidget):
 
 class Image(BaseWidget):
     def __init__(self, parent, rect, image,
-                 bord_color=None, light_image=None,
+                 border_color=None, light_image=None,
                  key=None, modifier=None, slot=do_nothing):
         super().__init__(parent, rect)
+        self.border_w = 2
+        self.light_delta = 90
+
         self.image = self.current_image = tr.scale(image, (self.w, self.h))
         self.light_image = light_image if light_image is None\
             else tr.scale(light_image, (self.w, self.h))
@@ -286,12 +279,10 @@ class Image(BaseWidget):
         self.modifier = modifier
         self.slot = slot
 
-        self.main_color = self.current_color = bord_color
-        self.light_main_color = pg.Color(min(self.main_color.r + 90, 255),
-                                         min(self.main_color.g + 90, 255),
-                                         min(self.main_color.b + 90, 255))\
+        self.main_color = self.current_color = border_color
+        self.light_main_color = get_light_color(self.main_color,
+                                                self.light_delta)\
             if self.main_color is not None else None
-        self.border_w = 2
 
     def render(self, screen=None):
         screen = screen if screen is not None else self.parent.screen
@@ -328,9 +319,8 @@ class Image(BaseWidget):
 
     def set_color(self, color=None):
         self.main_color = self.current_color = color
-        self.light_main_color = pg.Color(min(self.main_color.r + 90, 255),
-                                         min(self.main_color.g + 90, 255),
-                                         min(self.main_color.b + 90, 255))\
+        self.light_main_color = get_light_color(self.main_color,
+                                                self.light_delta)\
             if self.main_color is not None else None
 
     def set_slot(self, slot):
@@ -347,10 +337,10 @@ class Label(BaseWidget):
         self.border_w = 2
         self.text_strings = text.split('\n')
         max_string = get_max_text_string(self.text_strings)
-        text_h = (self.h - 2 * self.indent - (len(self.text_strings) - 1) *
-                 self.text_indent) // len(self.text_strings)
+        string_h = (self.h - 2 * self.indent - (len(self.text_strings) - 1) *
+                    self.text_indent) // len(self.text_strings)
         self.font_size = get_max_font_size(max_string,
-                                           self.w - 2 * self.indent, text_h,
+                                           self.w - 2 * self.indent, string_h,
                                            font_size)
         text = pg.font.Font(None, self.font_size).render(max_string, True,
                                                          pg.Color(0, 0, 0))
@@ -365,9 +355,8 @@ class Label(BaseWidget):
     def render(self, screen=None):
         screen = screen if screen is not None else self.parent.screen
         if self.border:
-            dr.rect(screen, self.back_color, (self.x, self.y, self.w, self.h))
-            dr.rect(screen, self.main_color, (self.x, self.y, self.w, self.h),
-                    width=self.border_w)
+            dr.rect(screen, self.back_color, self.rect)
+            dr.rect(screen, self.main_color, self.rect, width=self.border_w)
         self.surface = pg.Surface((self.text_w, self.text_h), pg.SRCALPHA, 32)
         self.surface.fill(pg.Color(0, 0, 0, 1))
         font = pg.font.Font(None, self.font_size)
@@ -408,27 +397,37 @@ class Label(BaseWidget):
         self.font_size = font_size
         self.set_text('\n'.join(self.text_strings))
 
+    def get_text_size(self):
+        return self.text_w, self.text_h
 
-class InputBox(BaseWidget):
+
+class LineEdit(BaseWidget):
     def __init__(self, parent, rect, text='', font_size=40,
-                 color_active=pg.Color(251, 160, 227),
-                 color_inactive=pg.Color(255, 0, 255),
+                 color=pg.Color(222, 18, 178),
                  back_color=pg.Color(0, 0, 0),
                  cursor_period=30):
         super().__init__(parent, rect)
         self.indent = 5
         self.border_w = 2
+        self.light_delta = 90
+
         self.start_cursor_period = self.cursor_period = cursor_period
         self.delta = -1
+
         self.text = text
         self.start_font_size = font_size
         self.font_size = get_max_font_size(text, self.w - 2 * self.indent,
                                            self.h - 2 * self.indent,
                                            self.start_font_size)
 
-        self.current_color = self.color_inactive = color_inactive
-        self.color_active = color_active
+        self.current_color = self.main_color = color
+        self.light_main_color = get_light_color(self.main_color,
+                                                self.light_delta)
         self.back_color = back_color
+
+        self.label = Label(self.parent, (self.x, self.y, self.w, self.h),
+                           self.text, self.current_color,
+                           font_size=self.font_size)
 
         self.active = False
         self.draw_cursor = False
@@ -440,27 +439,27 @@ class InputBox(BaseWidget):
                 self.active = True
             elif event.pos not in self and event.button == 1:
                 self.active = False
-            self.current_color = self.color_active if self.active\
-                else self.color_inactive
-        if event.type == pg.KEYDOWN:
-            if self.active:
-                if event.key == pg.K_BACKSPACE:
-                    self.set_text(self.text[:-1])
-                else:
-                    self.set_text(self.text + event.unicode)
+            self.current_color = self.light_main_color if self.active\
+                else self.main_color
+            self.label.set_color(self.current_color)
+        if event.type == pg.KEYDOWN and self.active:
+            if event.key == pg.K_BACKSPACE:
+                self.set_text(self.text[:-1])
+            else:
+                symbol = event.unicode
+                if symbol.isprintable():
+                    self.set_text(self.text + symbol)
 
     def render(self, screen=None):
         screen = screen if screen is not None else self.parent.screen
         pg.draw.rect(screen, self.back_color, self.rect)
         pg.draw.rect(screen, self.current_color, self.rect, self.border_w)
-        font = pg.font.Font(None, self.font_size)
-        txt = font.render(self.text, True, self.current_color)
-        screen.blit(txt, (self.x + self.indent, self.y + self.indent))
+        self.label.render()
         if self.active and self.draw_cursor:
             dr.line(screen, self.current_color,
-                    (self.x + self.indent + txt.get_width(),
+                    (self.x + self.indent + self.label.get_text_size()[0],
                      self.y + self.indent),
-                    (self.x + self.indent + txt.get_width(),
+                    (self.x + self.indent + self.label.get_text_size()[0],
                      self.y + self.h - 2 * self.indent), self.border_w)
         self.cursor_period += self.delta
         if self.cursor_period <= 0 or\
@@ -476,3 +475,5 @@ class InputBox(BaseWidget):
         self.font_size = get_max_font_size(text, self.w - 2 * self.indent,
                                            self.h - 2 * self.indent,
                                            self.start_font_size)
+        self.label.set_text(self.text)
+        self.label.set_font_size(self.font_size)

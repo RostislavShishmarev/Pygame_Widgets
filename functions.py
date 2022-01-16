@@ -57,9 +57,15 @@ def get_coords_from_align(alignment, parent_w, parent_h, item_w, item_h,
         y = parent_h // 2 - item_h // 2
     else:
         raise NotAlignmentError('Argument is not an Align object')
-    return (start_x + x, start_y + y)
+    return start_x + x, start_y + y
 
 
 def get_max_text_string(strings):
     return max(strings, key=lambda x:\
         pg.font.Font(None, 50).render(x, True, pg.Color(0, 0, 0)).get_width())
+
+
+def get_light_color(color, delta):
+    func, value = (min, 255) if delta >= 0 else (max, 0)
+    return pg.Color(func(color.r + delta, value), func(color.g + delta, value),
+                    func(color.b + delta, value))
