@@ -3,8 +3,9 @@ import pygame.draw as dr
 import pygame.sprite as spr
 import pygame.transform as tr
 
-from functions import do_nothing, get_width, load_image
-from additional_classes import HorAlign, UnSupportableMethodBeforeRun
+from functions import do_nothing, get_width, load_image, get_max_font_size,\
+    get_coords_from_align
+from additional_classes import Align
 
 
 class BaseWidget(spr.Sprite):
@@ -47,19 +48,23 @@ class BaseWidget(spr.Sprite):
 
     def set_x(self, x):
         self.x = x
+        self.rect.x = x
         self.x1 = self.x + self.w
 
     def set_y(self, y):
         self.y = y
+        self.rect.y = y
         self.y1 = self.y + self.h
-
-    def set_h(self, h):
-        self.h = h
-        self.y1 = self.y + h
 
     def set_w(self, w):
         self.w = w
+        self.rect.w = w
         self.x1 = self.x + w
+
+    def set_h(self, h):
+        self.h = h
+        self.rect.h = h
+        self.y1 = self.y + h
 
 
 class Window(BaseWidget):
@@ -133,9 +138,12 @@ class Window(BaseWidget):
     def set_cursor(self, image_name):
         self.cursor_name = image_name
         if self.runned and self.cursor_name is not None:
+            pos = pg.mouse.get_pos()
+            self.cursor.kill()
             self.cursor = spr.Sprite(self.cursor_group)
             self.cursor.image = load_image(self.cursor_name)
             self.cursor.rect = self.cursor.image.get_rect()
+            self.cursor.rect.topleft = pos
 
     def set_logo(self, image_name):
         self.logo_name = image_name
@@ -173,33 +181,32 @@ class Window(BaseWidget):
 class Button(BaseWidget):
     def __init__(self, parent, rect, text, font_size=40,
                  main_color=pg.Color(70, 202, 232),
-                 back_color=pg.Color(0, 0, 0), slot=do_nothing, text2=None,
-                 key=None, modifier=None):
+                 back_color=pg.Color(0, 0, 0), slot=do_nothing,
+                 key=None, modifier=None, alignment=Align.CENTER):
         super().__init__(parent, rect)
-        self.function = slot
-
-        self.text = text
-        self.text2 = text2 if text2 is not None else text
-        self.current_text = self.text
-        self.font_size = font_size
+        self.slot = slot
+        self.border_w = 2
+        self.light_delta = 90
+        self.indent = 5
 
         self.main_color = main_color
-        self.light_main_color = pg.Color(min(self.main_color.r + 90, 255),
-                                         min(self.main_color.g + 90, 255),
-                                         min(self.main_color.b + 90, 255))
+        self.light_main_color = pg.Color(min(self.main_color.r +\
+                                             self.light_delta, 255),
+                                         min(self.main_color.g +\
+                                             self.light_delta, 255),
+                                         min(self.main_color.b +\
+                                             self.light_delta, 255))
         self.current_color = self.main_color
         self.back_color = back_color
-        self.border_w = 2
+
+        self.text = text
+        self.font_size = font_size if font_size < self.h - 2 * self.indent\
+            else get_max_font_size(self.text, self.w - 2 * self.indent,
+                                   font_size)
+        self.alignment = alignment
 
         self.key = key
         self.modifier = modifier
-
-    def slot(self, *args, **kwargs):
-        # Декорация переданной функции:
-        self.current_text = self.text if self.current_text == self.text2\
-            else self.text2
-
-        self.function(*args, **kwargs)
 
     def render(self, screen=None):
         screen = screen if screen is not None else self.parent.screen
@@ -208,9 +215,13 @@ class Button(BaseWidget):
         dr.rect(screen, self.current_color,
                 (self.x, self.y, self.w, self.h), width=self.border_w)
         font = pg.font.Font(None, self.font_size)
-        text = font.render(self.current_text, True, self.current_color)
-        screen.blit(text, (self.x + self.w // 2 - text.get_width() // 2,
-                           self.y + self.h // 2 - text.get_height() // 2))
+        text = font.render(self.text, True, self.current_color)
+        x, y = get_coords_from_align(self.alignment, self.w, self.h,
+                                     text.get_width(), text.get_height(),
+                                     x_indent=self.indent,
+                                     y_indent=self.indent, start_x=self.x,
+                                     start_y=self.y)
+        screen.blit(text, (x, y))
 
     def process_event(self, event, *args, **kwargs):
         if event.type == pg.MOUSEBUTTONDOWN:
@@ -231,16 +242,24 @@ class Button(BaseWidget):
 
     def set_color(self, color):
         self.main_color = self.current_color = color
-        self.light_main_color = pg.Color(min(self.main_color.r + 90, 255),
-                                         min(self.main_color.g + 90, 255),
-                                         min(self.main_color.b + 90, 255))
+        func = min if self.light_delta >= 0 else max
+        value = 255 if self.light_delta >= 0 else 0
+        self.light_main_color = pg.Color(func(self.main_color.r +\
+                                              self.light_delta, value),
+                                         func(self.main_color.g +\
+                                              self.light_delta, value),
+                                         func(self.main_color.b +\
+                                              self.light_delta, value))
 
     def set_slot(self, slot):
-        self.function = slot
+        self.slot = slot
 
-    def set_text(self, text, text2=None):
-        self.text = self.current_text = text
-        self.text2 = text2 if text2 is not None else text
+    def set_text(self, text):
+        self.text = text
+
+    def set_light_delta(self, delta):
+        self.light_delta = delta
+        self.set_color(self.main_color)
 
 
 class Image(BaseWidget):
@@ -310,7 +329,7 @@ class Image(BaseWidget):
 class Label(BaseWidget):
     def __init__(self, parent, rect, text, main_color=pg.Color(247, 180, 10),
                  back_color=pg.Color(0, 0, 0), font_size=20, border=False,
-                 alignment=HorAlign.LEFT, indent=5):
+                 alignment=Align.LEFT, indent=5):
         super().__init__(parent, rect)
         self.text = text
         self.font_size = font_size
@@ -329,11 +348,11 @@ class Label(BaseWidget):
                     width=self.border_w)
         font = pg.font.Font(None, self.font_size)
         text = font.render(self.text, True, self.main_color)
-        if self.alignment == HorAlign.LEFT:
+        if self.alignment == Align.LEFT:
             x = self.x + self.indent
-        elif self.alignment == HorAlign.CENTER:
+        elif self.alignment == Align.CENTER:
             x = self.x + self.w // 2 - text.get_width() // 2
-        elif self.alignment == HorAlign.RIGHT:
+        elif self.alignment == Align.RIGHT:
             x = self.x + self.w - self.indent
         else:
             return
