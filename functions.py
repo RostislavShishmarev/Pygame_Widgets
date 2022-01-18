@@ -62,7 +62,7 @@ def get_coords_from_align(alignment, parent_w, parent_h, item_w, item_h,
 
 def get_max_text_string(strings):
     return max(strings, key=lambda x:\
-        pg.font.Font(None, 50).render(x, True, pg.Color(0, 0, 0)).get_width())
+        pg.font.Font(None, 50).size(x)[0])
 
 
 def get_light_color(color, delta):
